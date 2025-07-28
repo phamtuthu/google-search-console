@@ -26,8 +26,8 @@ else:
 GOOGLE_CREDENTIALS_FILE = CREDENTIALS_PATH
 
 # --- Config from ENV ---
-START_DATE = os.environ.get("START_DATE", "2025-07-02")
-END_DATE = os.environ.get("END_DATE", "2025-07-27")
+START_DATE = os.environ.get("START_DATE", "2025-05-01")
+END_DATE = os.environ.get("END_DATE", "2025-06-30")
 MAX_ROWS = int(os.environ.get("MAX_ROWS", 30000))
 CH_HOST = os.environ.get("CH_HOST")
 CH_PORT = int(os.environ.get("CH_PORT", 9000))
