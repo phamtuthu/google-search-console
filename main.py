@@ -2,7 +2,7 @@ import os
 from datetime import datetime, timedelta
 from google.analytics.data_v1beta import BetaAnalyticsDataClient
 from google.analytics.data_v1beta.types import (
-    RunReportRequest, DateRange, Dimension, Metric, FilterExpression, Filter, StringFilter
+    RunReportRequest, DateRange, Dimension, Metric, FilterExpression, Filter
 )
 from google.oauth2 import service_account
 from clickhouse_driver import Client
@@ -118,9 +118,9 @@ filter_expression = FilterExpression(
                 not_expression=FilterExpression(
                     filter=Filter(
                         field_name="streamName",
-                        string_filter=StringFilter(
+                        string_filter=Filter.StringFilter(
                             value="donhang.ghn.vn",
-                            match_type=StringFilter.MatchType.CONTAINS
+                            match_type=Filter.StringFilter.MatchType.CONTAINS
                         )
                     )
                 )
@@ -129,9 +129,9 @@ filter_expression = FilterExpression(
                 not_expression=FilterExpression(
                     filter=Filter(
                         field_name="fullPageUrl",
-                        string_filter=StringFilter(
+                        string_filter=Filter.StringFilter(
                             value="ghn.dev",
-                            match_type=StringFilter.MatchType.CONTAINS
+                            match_type=Filter.StringFilter.MatchType.CONTAINS
                         )
                     )
                 )
