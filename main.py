@@ -1,18 +1,34 @@
 import os
+from datetime import datetime, timedelta
 from google.analytics.data_v1beta import BetaAnalyticsDataClient
 from google.analytics.data_v1beta.types import (
     RunReportRequest, DateRange, Dimension, Metric, FilterExpression, Filter, StringFilter
 )
 from google.oauth2 import service_account
 from clickhouse_driver import Client
-from datetime import datetime, timezone, timedelta
 
-# === CONFIGURATION ===
-START_DATE = "2025-07-01"
-END_DATE = "2025-07-01"
-MAX_ROWS = 30000
+print("========== Script started ==========")
+print("Python version:", __import__('sys').version)
 
-# ClickHouse config (set env or hardcode)
+# --- Check and create credentials file from env if needed ---
+CREDENTIALS_ENV = os.environ.get("GA4_CREDENTIALS_JSON")
+CREDENTIALS_PATH = "ga4-credentials.json"
+
+if CREDENTIALS_ENV and not os.path.exists(CREDENTIALS_PATH):
+    with open(CREDENTIALS_PATH, "w") as f:
+        f.write(CREDENTIALS_ENV)
+    print("Created ga4-credentials.json from env variable.")
+elif os.path.exists(CREDENTIALS_PATH):
+    print("ga4-credentials.json file exists.")
+else:
+    print("No credentials file found! Script will fail if continue.")
+
+GOOGLE_CREDENTIALS_FILE = CREDENTIALS_PATH
+
+# --- Config from ENV ---
+START_DATE = os.environ.get("START_DATE", "2025-07-01")
+END_DATE = os.environ.get("END_DATE", "2025-07-01")
+MAX_ROWS = int(os.environ.get("MAX_ROWS", 30000))
 CH_HOST = os.environ.get("CH_HOST")
 CH_PORT = int(os.environ.get("CH_PORT", 9000))
 CH_USER = os.environ.get("CH_USER")
@@ -21,15 +37,63 @@ CH_DATABASE = os.environ.get("CH_DATABASE")
 CH_TABLE = os.environ.get("CH_TABLE")
 GA4_PROPERTY_ID = os.environ.get("GA4_PROPERTY_ID")
 
-GOOGLE_CREDENTIALS_FILE = os.environ.get("GA4_CREDENTIALS_JSON")
+# --- Print all config to log ---
+print(f"START_DATE: {START_DATE}")
+print(f"END_DATE: {END_DATE}")
+print(f"MAX_ROWS: {MAX_ROWS}")
+print(f"CH_HOST: {CH_HOST}")
+print(f"CH_PORT: {CH_PORT}")
+print(f"CH_USER: {CH_USER}")
+print(f"CH_DATABASE: {CH_DATABASE}")
+print(f"CH_TABLE: {CH_TABLE}")
+print(f"GA4_PROPERTY_ID: {GA4_PROPERTY_ID}")
+print(f"GOOGLE_CREDENTIALS_FILE: {GOOGLE_CREDENTIALS_FILE}")
 
-# === 1. AUTHENTICATE ===
-credentials = service_account.Credentials.from_service_account_file(
-    GOOGLE_CREDENTIALS_FILE,
-    scopes=["https://www.googleapis.com/auth/analytics.readonly"],
-)
-client = BetaAnalyticsDataClient(credentials=credentials)
+# --- Authenticate GA4 API ---
+try:
+    credentials = service_account.Credentials.from_service_account_file(
+        GOOGLE_CREDENTIALS_FILE,
+        scopes=["https://www.googleapis.com/auth/analytics.readonly"],
+    )
+    ga4_client = BetaAnalyticsDataClient(credentials=credentials)
+    print("GA4 API client created.")
+except Exception as e:
+    print("GA4 AUTH ERROR:", str(e))
+    raise
 
+# --- Test a small GA4 request ---
+try:
+    test_req = RunReportRequest(
+        property=f"properties/{GA4_PROPERTY_ID}",
+        dimensions=[Dimension(name="date")],
+        metrics=[Metric(name="sessions")],
+        date_ranges=[DateRange(start_date=START_DATE, end_date=END_DATE)],
+        limit=1,
+    )
+    test_resp = ga4_client.run_report(test_req)
+    print("GA4 API test query OK. Sample data:", [
+        f.value for f in test_resp.rows[0].dimension_values
+    ] if test_resp.rows else "No data")
+except Exception as e:
+    print("GA4 TEST REQUEST ERROR:", str(e))
+    raise
+
+# --- Test connect ClickHouse ---
+try:
+    ch_client = Client(
+        host=CH_HOST,
+        port=CH_PORT,
+        user=CH_USER,
+        password=CH_PASSWORD,
+        database=CH_DATABASE
+    )
+    ch_client.execute("SELECT 1")
+    print("ClickHouse connection: OK")
+except Exception as e:
+    print("ClickHouse connection failed:", str(e))
+    raise
+
+# --- Define Dimensions and Metrics ---
 dimensions = [
     Dimension(name="date"),
     Dimension(name="platform"),
@@ -46,11 +110,10 @@ metrics = [
     Metric(name="bounceRate"),
 ]
 
-# === 2. FILTER (Loại trừ 2 điều kiện) ===
+# --- Filter: loại trừ streamName chứa donhang.ghn.vn và fullPageUrl chứa ghn.dev ---
 filter_expression = FilterExpression(
     and_group=FilterExpression.AndGroup(
         expressions=[
-            # 1. NOT streamName CONTAINS donhang.ghn.vn
             FilterExpression(
                 not_expression=FilterExpression(
                     filter=Filter(
@@ -62,7 +125,6 @@ filter_expression = FilterExpression(
                     )
                 )
             ),
-            # 2. NOT fullPageUrl CONTAINS ghn.dev
             FilterExpression(
                 not_expression=FilterExpression(
                     filter=Filter(
@@ -78,11 +140,12 @@ filter_expression = FilterExpression(
     )
 )
 
-# === 3. PHÂN TRANG & LẤY DỮ LIỆU ===
+# --- Phân trang và lấy data ---
 offset = 0
 all_rows = []
+page = 1
 while True:
-    print(f"Fetching rows with offset {offset} ...")
+    print(f"Fetching GA4 rows: page {page}, offset {offset}")
     request = RunReportRequest(
         property=f"properties/{GA4_PROPERTY_ID}",
         dimensions=dimensions,
@@ -92,55 +155,42 @@ while True:
         offset=offset,
         dimension_filter=filter_expression,
     )
-    response = client.run_report(request)
+    response = ga4_client.run_report(request)
     rows = []
     for row in response.rows:
-        # Đúng thứ tự với ClickHouse table:
-        # date, platform, streamName, customUser_ga_session_id, newVsReturning,
-        # firstUserCampaignId, firstUserCampaignName, firstUserSourceMedium, fullPageUrl, sessions, bounceRate
-
         values = [f.value for f in row.dimension_values] + [f.value for f in row.metric_values]
-
-        # Parse date sang dạng datetime (ClickHouse dùng Asia/Bangkok = UTC+7)
-        # GA4 trả ra date theo dạng 'YYYYMMDD', ví dụ '20250701'
+        # Parse date sang datetime Asia/Bangkok (UTC+7)
         date_str = values[0]
         date_dt = datetime.strptime(date_str, "%Y%m%d") + timedelta(hours=7)
-        values[0] = date_dt  # Chuyển sang datetime với tz +7
-
-        # Map đúng tên cột customUser_ga_session_id
-        # (nếu GA4 trả về tên khác thì rename cho đúng)
-        # Không cần đổi gì vì theo dimensions đã khai báo
-
-        # Kiểu dữ liệu
-        values[9] = int(float(values[9]) if values[9] else 0)      # sessions: UInt32
-        values[10] = float(values[10]) if values[10] else 0.0      # bounceRate: Float64
-
+        values[0] = date_dt
+        # sessions: UInt32, bounceRate: Float64
+        values[9] = int(float(values[9]) if values[9] else 0)
+        values[10] = float(values[10]) if values[10] else 0.0
         rows.append(values)
+    print(f"Fetched {len(rows)} rows on page {page}.")
     all_rows.extend(rows)
-    print(f"Fetched {len(rows)} rows.")
     if len(rows) < MAX_ROWS:
-        break  # Hết data rồi
+        break
     offset += MAX_ROWS
+    page += 1
 
-print(f"===> Tổng số rows thu được: {len(all_rows)}")
+print(f"===> Tổng số rows thu được từ GA4: {len(all_rows)}")
 
-# === 4. ĐẨY LÊN CLICKHOUSE ===
+# --- Đẩy lên ClickHouse ---
 if all_rows:
-    ch_client = Client(
-        host=CH_HOST,
-        port=CH_PORT,
-        user=CH_USER,
-        password=CH_PASSWORD,
-        database=CH_DATABASE
-    )
-    insert_query = f"""
-        INSERT INTO {CH_TABLE} (
-            date, platform, streamName, customUser_ga_session_id, newVsReturning,
-            firstUserCampaignId, firstUserCampaignName, firstUserSourceMedium, fullPageUrl,
-            sessions, bounceRate
-        ) VALUES
-    """
-    ch_client.execute(insert_query, all_rows)
-    print(f"Đã insert {len(all_rows)} rows vào ClickHouse table {CH_TABLE}")
+    try:
+        insert_query = f"""
+            INSERT INTO {CH_TABLE} (
+                date, platform, streamName, customUser_ga_session_id, newVsReturning,
+                firstUserCampaignId, firstUserCampaignName, firstUserSourceMedium, fullPageUrl,
+                sessions, bounceRate
+            ) VALUES
+        """
+        ch_client.execute(insert_query, all_rows)
+        print(f"Đã insert {len(all_rows)} rows vào ClickHouse table {CH_TABLE}")
+    except Exception as e:
+        print("ERROR inserting data to ClickHouse:", str(e))
 else:
     print("Không có dữ liệu để insert!")
+
+print("========== Script finished ==========")
