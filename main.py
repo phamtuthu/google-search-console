@@ -36,6 +36,12 @@ CH_PASSWORD = os.environ.get("CH_PASSWORD")
 CH_DATABASE = os.environ.get("CH_DATABASE")
 CH_TABLE = os.environ.get("CH_TABLE")
 GA4_PROPERTY_ID = os.environ.get("GA4_PROPERTY_ID")
+print("CH_HOST:", CH_HOST)
+print("CH_PORT:", CH_PORT)
+print("CH_USER:", CH_USER)
+print("CH_DATABASE:", CH_DATABASE)
+print("CH_TABLE:", CH_TABLE)
+
 
 # --- Print all config to log ---
 print(f"START_DATE: {START_DATE}")
