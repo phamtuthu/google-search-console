@@ -118,30 +118,32 @@ metrics = [
 
 # --- Filter: loại trừ streamName chứa donhang.ghn.vn và fullPageUrl chứa ghn.dev ---
 filter_expression = FilterExpression(
-    and_group=[
-        FilterExpression(
-            not_expression=FilterExpression(
-                filter=Filter(
-                    field_name="streamName",
-                    string_filter=Filter.StringFilter(
-                        value="donhang.ghn.vn",
-                        match_type=Filter.StringFilter.MatchType.CONTAINS
+    and_group={
+        "expressions": [
+            FilterExpression(
+                not_expression=FilterExpression(
+                    filter=Filter(
+                        field_name="streamName",
+                        string_filter=Filter.StringFilter(
+                            value="donhang.ghn.vn",
+                            match_type=Filter.StringFilter.MatchType.CONTAINS
+                        )
                     )
                 )
-            )
-        ),
-        FilterExpression(
-            not_expression=FilterExpression(
-                filter=Filter(
-                    field_name="fullPageUrl",
-                    string_filter=Filter.StringFilter(
-                        value="ghn.dev",
-                        match_type=Filter.StringFilter.MatchType.CONTAINS
+            ),
+            FilterExpression(
+                not_expression=FilterExpression(
+                    filter=Filter(
+                        field_name="fullPageUrl",
+                        string_filter=Filter.StringFilter(
+                            value="ghn.dev",
+                            match_type=Filter.StringFilter.MatchType.CONTAINS
+                        )
                     )
                 )
-            )
-        ),
-    ]
+            ),
+        ]
+    }
 )
 
 # --- Phân trang và lấy data ---
