@@ -1,4 +1,5 @@
 import os
+import pytz
 from datetime import datetime, timedelta
 from google.analytics.data_v1beta import BetaAnalyticsDataClient
 from google.analytics.data_v1beta.types import (
@@ -26,8 +27,13 @@ else:
 GOOGLE_CREDENTIALS_FILE = CREDENTIALS_PATH
 
 # --- Config from ENV ---
-START_DATE = os.environ.get("START_DATE", "2025-05-01")
-END_DATE = os.environ.get("END_DATE", "2025-06-30")
+#START_DATE = os.environ.get("START_DATE", "2025-05-01")
+#END_DATE = os.environ.get("END_DATE", "2025-06-30")
+now_vn = datetime.now(pytz.timezone('Asia/Ho_Chi_Minh'))
+yesterday_vn = (now_vn - timedelta(days=1)).strftime("%Y-%m-%d")
+
+START_DATE = os.environ.get("START_DATE", yesterday_vn)
+END_DATE = os.environ.get("END_DATE", yesterday_vn)
 MAX_ROWS = int(os.environ.get("MAX_ROWS", 30000))
 CH_HOST = os.environ.get("CH_HOST")
 CH_PORT = int(os.environ.get("CH_PORT", 9000))
