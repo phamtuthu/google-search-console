@@ -18,8 +18,8 @@ if CREDENTIALS_ENV and not os.path.exists(CREDENTIALS_PATH):
     print("✅ Created ga4-credentials.json from env variable.")
 
 # --- Cấu hình ---
-START_DATE = "2025-07-01"
-END_DATE = "2025-07-31"
+START_DATE = "2025-06-01"
+END_DATE = "2025-06-30"
 MAX_ROWS = int(os.environ.get("MAX_ROWS", 30000))
 
 CH_HOST = os.environ.get("CH_HOST")
